@@ -1,8 +1,10 @@
 package sigv4_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -42,6 +44,7 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 }
 
 func TestHashCanonicalRequest(t *testing.T) {
+	t.Parallel()
 	cr := `GET
 /
 Action=ListUsers&Version=2010-05-08
@@ -60,29 +63,45 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 }
 
 func TestCreateStringToSign(t *testing.T) {
+	t.Parallel()
 	want := `AWS4-HMAC-SHA256
 20150830T123600Z
 20150830/us-east-1/iam/aws4_request
 f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59`
 	req := testRequest()
-	got := sigv4.CreateStringToSign(req)
+	credScope := "20150830/us-east-1/iam/aws4_request"
+	hashedCR := "f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59"
+	got := sigv4.CreateStringToSign(req, credScope, hashedCR)
 	if want != got {
 		t.Fatalf(cmp.Diff(want, got))
 	}
 }
 
-// func TestSignSigv4(t *testing.T) {
+func TestGetSignature(t *testing.T) {
+	t.Parallel()
+	stringToSign := `AWS4-HMAC-SHA256
+20150830T123600Z
+20150830/us-east-1/iam/aws4_request
+f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59`
+	want := "bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
+	got := sigv4.GetSignature(stringToSign)
+	if want != got {
+		t.Fatalf(cmp.Diff(want, got))
+	}
+}
 
-// }
-
-// func DeriveSigningKey(t *testing.T) {
-
-// }
-
-// func CreateSignature(t *testing.T) {
-
-// }
-
-// func AddSignatureToRequest(t *testing.T) {
-
-// }
+func TestCreateAuthorization(t *testing.T) {
+	t.Parallel()
+	req := testRequest()
+	algorithm := "AWS4-X509-RSA-SHA256"
+	certSerial := "CERTIFICATESERIALNUMBER"
+	credScope := "20150830/us-east-1/iam/aws4_request"
+	credential := fmt.Sprintf("%s/%s", certSerial, credScope)
+	signedHeaders := strings.Join(sigv4.SignedHeaders(req), ";")
+	signature := "bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
+	want := ""
+	got := sigv4.CreateAuthorization(algorithm, credential, signedHeaders, signature)
+	if want != got {
+		t.Fatalf(cmp.Diff(want, got))
+	}
+}
