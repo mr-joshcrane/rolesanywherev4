@@ -1,7 +1,11 @@
 package sigv4
 
 import (
+	"crypto"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -58,11 +62,22 @@ func SignedHeaders(req http.Request) []string {
 
 func CreateStringToSign(req http.Request, credScope string, hashedCR string) string {
 	requestTimestamp := req.Header.Get("x-amz-date")
-	return fmt.Sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s", requestTimestamp, credScope, hashedCR)
+	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", requestTimestamp, credScope, hashedCR)
 }
 
-func GetSignature(stringToSign string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(stringToSign)))
+func GetSignature(req http.Request, stringToSign string, privateKey string) string {
+	p, _ := pem.Decode([]byte(privateKey))
+	parsedKey, err := x509.ParsePKCS1PrivateKey(p.Bytes)
+	if err != nil {
+		panic(err)
+	}
+	digest := sha256.Sum256([]byte(stringToSign))
+	signed, err := parsedKey.Sign(rand.Reader, digest[:], crypto.SignerOpts.HashFunc(crypto.SHA256))
+	if err != nil {
+		panic(err)
+	}
+	
+	return fmt.Sprintf("%x", signed)
 }
 
 func SignRequest(req *http.Request, auth string) {
@@ -71,4 +86,12 @@ func SignRequest(req *http.Request, auth string) {
 
 func CreateAuthorization(algorithm string, credential string, signedHeaders string, signature string) string {
 	return fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
+}
+
+type RequestBody struct {
+	DurationSeconds int
+	ProfileArn      string
+	RoleArn         string
+	SessionName     string
+	TrustAnchorArn  string
 }
