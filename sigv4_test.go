@@ -22,6 +22,7 @@ func testRequest() http.Request {
 	req.Header.Add("content-type", "application/x-www-form-urlencoded; charset=utf-8")
 	req.Header.Add("X-Amz-Date", "20150830T123600Z")
 	req.Header.Add("host", "iam.amazonaws.com")
+	req.Header.Add("X-Amz-X509", "MO+/vQISMO+/vQF7AgIK77+9MAoGCSrvv71I77+977+9CgEBBQUAMO+/ve+/vTELMAkGA1UEBhMCSlAxDjAMBgNVBAgTBVRva3lvMRAwDgYDVQQHEwdDaHVvLWt1MREwDwYDVQQKEwhGcmFuazRERDEYMBYGA1UECxMPV2ViQ2VydCBTdXBwb3J0MRgwFgYDVQQDEw9GcmFuazRERCBXZWIgQ0ExIzAhBgkq77+9SO+/ve+/vQoBCQEWFHN1cHBvcnRAZnJhbms0ZGQuY29tMB4XCjEyMDgyMjA1MjY1NFoXCjE3MDgyMTA1MjY1NFowSjELMAkGA1UEBhMCSlAxDjAMBgNVBAgMBVRva3lvMREwDwYDVQQKDAhGcmFuazRERDEYMBYGA1UEAwwPd3d3LmV4YW1wbGUuY29tMFwwCgYJKu+/vUjvv73vv70KAQEBBQADSwAwSAJBAO+/ve+/vWbvv71577+9Qu+/ve+/vRPvv70re++/ve+/vRUS77+977+977+9Bu+/vXvvv73vv73vv70m77+977+9Ae+/ve+/vTDvv71k77+9Au+/vRVp77+9NO+/vQbvv70/NTweGyvvv73vv73vv70AG++/vQfGrFMHAgMBAAEwCgYJKu+/vUjvv73vv70KAQEFBQAD77+977+9ABTvv71M77+977+9eTPvv71x77+977+9UW/vv70IHe+/vWDvv70Y77+9c0dZ77+977+9IEjvv71h77+977+9Te+/ve+/ve+/ve+/vSHvv73vv73vv73vv73Wpjbvv710UO+/ve+/vQ/vv70d77+9fe+/vS7vv71/Re+/ve+/ve+/vT5577+977+9MDHvv70gcu+/vVguKu+/vRJaNEXvv70ZCHzvv71HX0rvv73vv70jIUpTcu+/vSoFLy7vv71w77+9W++/ve+/vd+0Me+/ve+/vUrvv70GJUPvv73vv70ef++/ve+/vRZA")
 	return req
 }
 
@@ -33,8 +34,9 @@ Action=ListUsers&Version=2010-05-08
 content-type:application/x-www-form-urlencoded; charset=utf-8
 host:iam.amazonaws.com
 x-amz-date:20150830T123600Z
+x-amz-x509:MO+/vQISMO+/vQF7AgIK77+9MAoGCSrvv71I77+977+9CgEBBQUAMO+/ve+/vTELMAkGA1UEBhMCSlAxDjAMBgNVBAgTBVRva3lvMRAwDgYDVQQHEwdDaHVvLWt1MREwDwYDVQQKEwhGcmFuazRERDEYMBYGA1UECxMPV2ViQ2VydCBTdXBwb3J0MRgwFgYDVQQDEw9GcmFuazRERCBXZWIgQ0ExIzAhBgkq77+9SO+/ve+/vQoBCQEWFHN1cHBvcnRAZnJhbms0ZGQuY29tMB4XCjEyMDgyMjA1MjY1NFoXCjE3MDgyMTA1MjY1NFowSjELMAkGA1UEBhMCSlAxDjAMBgNVBAgMBVRva3lvMREwDwYDVQQKDAhGcmFuazRERDEYMBYGA1UEAwwPd3d3LmV4YW1wbGUuY29tMFwwCgYJKu+/vUjvv73vv70KAQEBBQADSwAwSAJBAO+/ve+/vWbvv71577+9Qu+/ve+/vRPvv70re++/ve+/vRUS77+977+977+9Bu+/vXvvv73vv73vv70m77+977+9Ae+/ve+/vTDvv71k77+9Au+/vRVp77+9NO+/vQbvv70/NTweGyvvv73vv73vv70AG++/vQfGrFMHAgMBAAEwCgYJKu+/vUjvv73vv70KAQEFBQAD77+977+9ABTvv71M77+977+9eTPvv71x77+977+9UW/vv70IHe+/vWDvv70Y77+9c0dZ77+977+9IEjvv71h77+977+9Te+/ve+/ve+/ve+/vSHvv73vv73vv73vv73Wpjbvv710UO+/ve+/vQ/vv70d77+9fe+/vS7vv71/Re+/ve+/ve+/vT5577+977+9MDHvv70gcu+/vVguKu+/vRJaNEXvv70ZCHzvv71HX0rvv73vv70jIUpTcu+/vSoFLy7vv71w77+9W++/ve+/vd+0Me+/ve+/vUrvv70GJUPvv73vv70ef++/ve+/vRZA
 
-content-type;host;x-amz-date
+content-type;host;x-amz-date;x-amz-x509
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 
 	req := testRequest()
@@ -101,7 +103,7 @@ func TestCreateAuthorization(t *testing.T) {
 	credential := fmt.Sprintf("%s/%s", certSerial, credScope)
 	signedHeaders := strings.Join(sigv4.SignedHeaders(req), ";")
 	signature := "bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
-	want := "AWS4-X509-RSA-SHA256 Credential=CERTIFICATESERIALNUMBER/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
+	want := "AWS4-X509-RSA-SHA256 Credential=CERTIFICATESERIALNUMBER/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-x509, Signature=bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
 	got := sigv4.CreateAuthorization(algorithm, credential, signedHeaders, signature)
 	if want != got {
 		t.Fatalf(cmp.Diff(want, got))
