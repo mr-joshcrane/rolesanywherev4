@@ -50,3 +50,7 @@ func canonicalHeaders(req http.Request) string {
 	cHeaders.WriteString("\n")
 	return cHeaders.String()
 }
+
+func CreateStringToSign(req http.Request) string {
+	return ""
+}
