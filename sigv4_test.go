@@ -36,6 +36,24 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 	}
 }
 
+func TestHashCanonicalRequest(t *testing.T) {
+	cr := `GET
+/
+Action=ListUsers&Version=2010-05-08
+content-type:application/x-www-form-urlencoded; charset=utf-8
+host:iam.amazonaws.com
+x-amz-date:20150830T123600Z
+
+content-type;host;x-amz-date
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+	
+	want := "f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59"
+	got := sigv4.HashedCanonicalRequest(cr)
+	if want != got {
+		t.Fatalf(cmp.Diff(want, got))
+	}
+}
+
 // func CreateStringToSign(t *testing.T) {
 
 // }

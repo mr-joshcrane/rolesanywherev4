@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+func HashedCanonicalRequest(cr string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(cr)))
+}
+
 func CreateCanonicalRequest(req http.Request) string {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
