@@ -26,6 +26,7 @@ func testRequest() http.Request {
 }
 
 func TestCreateCanonicalRequest(t *testing.T) {
+	t.Parallel()
 	want := `GET
 /
 Action=ListUsers&Version=2010-05-08
