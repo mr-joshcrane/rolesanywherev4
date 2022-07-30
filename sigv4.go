@@ -10,23 +10,24 @@ import (
 )
 
 func CreateCanonicalRequest(req http.Request) string {
-	cr := ""
-	cr += req.Method + "\n"
-	cr += "/" + req.RequestURI + "\n"
-	cr += req.URL.RawQuery + "\n"
-	cr += CanonicalHeaders(req)
-
-	body, err := ioutil.ReadAll(req.Body)
+	cHeaders := canonicalHeaders(req)
+	hash, err := hashedPayload(req)
 	if err != nil {
 		panic(err)
 	}
-	hashedCr := fmt.Sprintf("%x", sha256.Sum256(body))
-	cr += hashedCr
-	return cr
+	return fmt.Sprintf("%s\n/%s\n%s\n%s%s", req.Method, req.RequestURI, req.URL.RawQuery, cHeaders, hash)
 }
 
-func CanonicalHeaders(req http.Request) string {
-	ch := ""
+func hashedPayload(req http.Request) (string, error) {
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(body)), nil
+}
+
+func canonicalHeaders(req http.Request) string {
+	cHeaders := strings.Builder{}
 	req.Header.Set("host", req.Host)
 	header_keys := []string{}
 	for k := range req.Header {
@@ -35,10 +36,13 @@ func CanonicalHeaders(req http.Request) string {
 	sort.Strings(header_keys)
 	for _, k := range header_keys {
 		v := req.Header.Get(k)
-		ch += fmt.Sprintf("%s:%s\n", k, v)
+		_, err := cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
+		if err != nil {
+			panic(err)
+		}
 	}
-	ch += "\n"
-	ch += strings.Join(header_keys, ";")
-	ch += "\n"
-	return ch
+	cHeaders.WriteString("\n")
+	cHeaders.WriteString(strings.Join(header_keys, ";"))
+	cHeaders.WriteString("\n")
+	return cHeaders.String()
 }

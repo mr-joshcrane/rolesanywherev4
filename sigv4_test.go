@@ -25,7 +25,7 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 		Host:   "iam.amazonaws.com",
 		URL:    &url.URL{Scheme: "https", Path: "iam.amazonaws.com/", RawQuery: "Action=ListUsers&Version=2010-05-08"},
 		Header: http.Header{},
-		Body: http.NoBody,
+		Body:   http.NoBody,
 	}
 	req.Header.Add("content-type", "application/x-www-form-urlencoded; charset=utf-8")
 	req.Header.Add("X-Amz-Date", "20150830T123600Z")
