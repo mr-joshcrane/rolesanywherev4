@@ -69,6 +69,6 @@ func SignRequest(req *http.Request, auth string) {
 	req.Header.Set("Authorization", auth)
 }
 
-func CreateAuthorization(algorithm string, credential string, signedHeaders string, signature string) string{
+func CreateAuthorization(algorithm string, credential string, signedHeaders string, signature string) string {
 	return fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
 }

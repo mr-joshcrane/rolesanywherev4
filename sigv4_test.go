@@ -21,6 +21,7 @@ func testRequest() http.Request {
 	}
 	req.Header.Add("content-type", "application/x-www-form-urlencoded; charset=utf-8")
 	req.Header.Add("X-Amz-Date", "20150830T123600Z")
+	req.Header.Add("host", "iam.amazonaws.com")
 	return req
 }
 
@@ -99,7 +100,7 @@ func TestCreateAuthorization(t *testing.T) {
 	credential := fmt.Sprintf("%s/%s", certSerial, credScope)
 	signedHeaders := strings.Join(sigv4.SignedHeaders(req), ";")
 	signature := "bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
-	want := ""
+	want := "AWS4-X509-RSA-SHA256 Credential=CERTIFICATESERIALNUMBER/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=bf336ef349a108bd9d6764b6b5202e90120038281f3774b363ff31e51a74b7e2"
 	got := sigv4.CreateAuthorization(algorithm, credential, signedHeaders, signature)
 	if want != got {
 		t.Fatalf(cmp.Diff(want, got))
