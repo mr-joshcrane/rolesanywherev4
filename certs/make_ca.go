@@ -69,7 +69,10 @@ func createCA() (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	keyBytes := x509.MarshalPKCS1PrivateKey(key)
+	keyBytes, _ := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		panic(err)
+	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
 	err = ioutil.WriteFile("./certs/ca_key.pem", keyPEM, 0700)
 	if err != nil {
@@ -140,7 +143,7 @@ func createIntermediate(parentKey *rsa.PrivateKey) error {
 	if err != nil {
 		return err
 	}
-	keyBytes:= x509.MarshalPKCS1PrivateKey(key)
+	keyBytes := x509.MarshalPKCS1PrivateKey(key)
 
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
 	err = ioutil.WriteFile("./certs/inter_key.pem", keyPEM, 0700)
@@ -164,9 +167,6 @@ func createIntermediate(parentKey *rsa.PrivateKey) error {
 		NotAfter:              time.Now().Add(time.Hour * 365 * 24),
 		ExtKeyUsage:   		   []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature,
-		BasicConstraintsValid: true,
-		IsCA: false,
-		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
 
 	interBytes, err := x509.CreateCertificate(rand.Reader, inter, ca, key.Public(), parentKey)
@@ -180,6 +180,20 @@ func createIntermediate(parentKey *rsa.PrivateKey) error {
 		return fmt.Errorf("writing certificate to filesystem: %w", err)
 	}
 	fileInfo, err = os.Stat("./certs/inter.pem")
+	if err != nil {
+		return fmt.Errorf("couldn't read file: %w", err)
+	}
+	// Check for prepopulation attack
+	if fileInfo.Mode() != fs.FileMode(0700) {
+		return fmt.Errorf("file didn't have expected permissions %w", err)
+	}
+
+	block, _ = pem.Decode(certPEM)
+	err = ioutil.WriteFile("./certs/inter.der", block.Bytes, 0700)
+	if err != nil {
+		return fmt.Errorf("writing certificate to filesystem: %w", err)
+	}
+	fileInfo, err = os.Stat("./certs/inter.der")
 	if err != nil {
 		return fmt.Errorf("couldn't read file: %w", err)
 	}

@@ -17,8 +17,7 @@ import (
 )
 
 func HashedCanonicalRequest(cr string) string {
-	x := fmt.Sprintf("%x", sha256.Sum256([]byte(cr)))
-	return hex.EncodeToString([]byte(x))
+	return hex.EncodeToString(MakeHash(sha256.New(), []byte(cr)))
 }
 
 func CreateCanonicalRequest(req http.Request) string {
@@ -28,7 +27,7 @@ func CreateCanonicalRequest(req http.Request) string {
 		panic(err)
 	}
 	uri := getURIPath(req.URL)
-	query := query(req)
+	query := Query(req)
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
 }
@@ -72,13 +71,15 @@ func CreateStringToSign(req http.Request, credScope string, hashedCR string) str
 	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", requestTimestamp, credScope, hashedCR)
 }
 
-func GetSignature(req http.Request, stringToSign string, privateKey []byte) string {
-	p, _ := pem.Decode(privateKey)
+func GetSignature(req http.Request, stringToSign string, privPEM []byte) string {
+	fmt.Println(stringToSign)
+
+	p, _ := pem.Decode(privPEM)
 	parsedKey, err := x509.ParsePKCS1PrivateKey(p.Bytes)
 	if err != nil {
 		panic(err)
 	}
-	digest := makeHash(sha256.New(), []byte(stringToSign))
+	digest := MakeHash(sha256.New(), []byte(stringToSign))
 	signed, err := parsedKey.Sign(rand.Reader, digest, crypto.SHA256)
 	if err != nil {
 		panic(err)
@@ -92,7 +93,7 @@ func SignRequest(req *http.Request, auth string) {
 
 func CreateAuthorization(algorithm string, credential string, signedHeaders string, signature string) string {
 	x := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
-	fmt.Println("$$$" + x)
+
 	println()
 	return x
 }
@@ -118,7 +119,7 @@ func getURIPath(u *url.URL) string {
 	return uri
 }
 
-func query(req http.Request) string {
+func Query(req http.Request) string {
 	query := req.URL.Query()
 	// Sort Each Query Key's Values
 	for key := range query {
@@ -126,11 +127,11 @@ func query(req http.Request) string {
 	}
 	var rawQuery strings.Builder
 	rawQuery.WriteString(strings.Replace(query.Encode(), "+", "%20", -1))
-
+	req.URL.RawQuery = rawQuery.String()
 	return rawQuery.String()
 }
 
-func makeHash(hash hash.Hash, b []byte) []byte {
+func MakeHash(hash hash.Hash, b []byte) []byte {
 	hash.Reset()
 	hash.Write(b)
 	return hash.Sum(nil)
