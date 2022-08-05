@@ -21,25 +21,15 @@ import (
 
 var Now = time.Now
 
-func SignedRequest(region, profileArn, roleArn, trustAnchorArn, signingCertPath, signingKeyPath string) (*http.Request, error) {
+func SignRequest(region, profileArn, roleArn, trustAnchorArn string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) (*http.Request, error) {
 	t := Now().UTC()
-	signingCert, err := loadSigningCert(signingCertPath)
-	if err != nil {
-		return nil, err
-	}
-	signingKey, err := loadSigningKey(signingKeyPath)
-	if err != nil {
-		return nil, err
-	}
 	req, err := createRequest(t, region, profileArn, roleArn, trustAnchorArn, signingCert)
 	if err != nil {
 		return nil, err
 	}
-	cr := CreateCanonicalRequest(*req)
-	crHashed := HashedCanonicalRequest(cr)
-	signedHeaders := strings.Join(SignedHeaders(*req), ";")
-	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
+	_, crHashed := CreateCanonicalRequest(*req)
 
+	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
 	credential := fmt.Sprintf("%s/%s", signingCert.SerialNumber, credScope)
 	stringToSign := CreateStringToSign(t, credScope, crHashed)
 	signature, err := GetSignature(*req, stringToSign, signingKey)
@@ -47,7 +37,7 @@ func SignedRequest(region, profileArn, roleArn, trustAnchorArn, signingCertPath,
 		return nil, err
 	}
 
-	addAuthHeader(req, "AWS4-X509-RSA-SHA256", credential, signedHeaders, signature)
+	addAuthHeader(req, "AWS4-X509-RSA-SHA256", credential, signature)
 	return req, nil
 }
 
@@ -68,7 +58,7 @@ func createRequest(t time.Time, region, profileArn, roleArn, trustAnchorArn stri
 	return req, nil
 }
 
-func loadSigningCert(path string) (*x509.Certificate, error) {
+func LoadSigningCert(path string) (*x509.Certificate, error) {
 	signingCertificatePEM, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -77,7 +67,7 @@ func loadSigningCert(path string) (*x509.Certificate, error) {
 	return x509.ParseCertificate(b.Bytes)
 }
 
-func loadSigningKey(path string) (*rsa.PrivateKey, error) {
+func LoadSigningKey(path string) (*rsa.PrivateKey, error) {
 	signingKey, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -86,17 +76,27 @@ func loadSigningKey(path string) (*rsa.PrivateKey, error) {
 	return x509.ParsePKCS1PrivateKey(p.Bytes)
 }
 
-func addAuthHeader(req *http.Request, algorithm, credential, signedHeaders, signature string) {
+func LoadCertsKeys(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
+	cert, err := LoadSigningCert(certPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := LoadSigningKey(keyPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cert, key, nil
+}
+
+func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
+	signedHeaders := strings.Join(SignedHeaders(*req), ";")
 	authHeader := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Add("content-type", "application/json")
 }
 
 func GetSignature(req http.Request, stringToSign string, signingKey *rsa.PrivateKey) (string, error) {
-	hash := sha256.New()
-	hash.Reset()
-	hash.Write([]byte(stringToSign))
-	digest := hash.Sum(nil)
+	digest := makeHash(sha256.New(), []byte(stringToSign))
 
 	signed, err := signingKey.Sign(rand.Reader, digest, crypto.SHA256)
 	if err != nil {
@@ -105,11 +105,7 @@ func GetSignature(req http.Request, stringToSign string, signingKey *rsa.Private
 	return hex.EncodeToString(signed), nil
 }
 
-func HashedCanonicalRequest(cr string) string {
-	return hex.EncodeToString(MakeHash(sha256.New(), []byte(cr)))
-}
-
-func CreateCanonicalRequest(req http.Request) string {
+func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string) {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
 	if err != nil {
@@ -117,8 +113,10 @@ func CreateCanonicalRequest(req http.Request) string {
 	}
 	uri := getURIPath(req.URL)
 	query := query(req)
+	canonicalRequest = fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
+	hashedCanonicalRequest = hex.EncodeToString(makeHash(sha256.New(), []byte(canonicalRequest)))
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
+	return canonicalRequest, hashedCanonicalRequest
 }
 
 func hashedPayload(req http.Request) (string, error) {
@@ -184,7 +182,7 @@ func query(req http.Request) string {
 	return rawQuery.String()
 }
 
-func MakeHash(hash hash.Hash, b []byte) []byte {
+func makeHash(hash hash.Hash, b []byte) []byte {
 	hash.Reset()
 	hash.Write(b)
 	return hash.Sum(nil)
