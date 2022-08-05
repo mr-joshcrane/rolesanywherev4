@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/pem"
 	"fmt"
 	"hash"
 	"io/ioutil"
@@ -59,36 +58,6 @@ func createRequest(t time.Time, region, profileArn, roleArn, trustAnchorArn stri
 	req.Header.Add("host", fmt.Sprintf("rolesanywhere.%s.amazonaws.com", region))
 	req.Header.Add("X-Amz-X509", base64.StdEncoding.EncodeToString(signingCert.Raw))
 	return req, nil
-}
-
-func LoadSigningCert(path string) (*x509.Certificate, error) {
-	signingCertificatePEM, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	b, _ := pem.Decode(signingCertificatePEM)
-	return x509.ParseCertificate(b.Bytes)
-}
-
-func LoadSigningKey(path string) (*rsa.PrivateKey, error) {
-	signingKey, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	p, _ := pem.Decode(signingKey)
-	return x509.ParsePKCS1PrivateKey(p.Bytes)
-}
-
-func LoadCertsKeys(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	cert, err := LoadSigningCert(certPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	key, err := LoadSigningKey(keyPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	return cert, key, nil
 }
 
 func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
@@ -172,7 +141,6 @@ func getURIPath(u *url.URL) string {
 
 func query(req http.Request) string {
 	query := req.URL.Query()
-	// Sort Each Query Key's Values
 	for key := range query {
 		sort.Strings(query[key])
 	}
