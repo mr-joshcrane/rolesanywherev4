@@ -27,7 +27,10 @@ func SignRequest(region, profileArn, roleArn, trustAnchorArn string, signingCert
 	if err != nil {
 		return nil, err
 	}
-	_, crHashed := CreateCanonicalRequest(*req)
+	_, crHashed, err := CreateCanonicalRequest(*req)
+	if err != nil {
+		return nil, err
+	}
 
 	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
 	credential := fmt.Sprintf("%s/%s", signingCert.SerialNumber, credScope)
@@ -105,18 +108,18 @@ func GetSignature(req http.Request, stringToSign string, signingKey *rsa.Private
 	return hex.EncodeToString(signed), nil
 }
 
-func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string) {
+func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string,  err error) {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
 	if err != nil {
-		panic(err)
+		return "", "", err
 	}
 	uri := getURIPath(req.URL)
 	query := query(req)
 	canonicalRequest = fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
 	hashedCanonicalRequest = hex.EncodeToString(makeHash(sha256.New(), []byte(canonicalRequest)))
 
-	return canonicalRequest, hashedCanonicalRequest
+	return canonicalRequest, hashedCanonicalRequest, nil
 }
 
 func hashedPayload(req http.Request) (string, error) {
@@ -133,10 +136,7 @@ func canonicalHeaders(req http.Request) string {
 	header_keys := SignedHeaders(req)
 	for _, k := range header_keys {
 		v := req.Header.Get(k)
-		_, err := cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
-		if err != nil {
-			panic(err)
-		}
+		cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
 	}
 	cHeaders.WriteString("\n")
 	cHeaders.WriteString(strings.Join(header_keys, ";"))
