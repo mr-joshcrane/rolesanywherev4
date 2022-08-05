@@ -1,11 +1,10 @@
-package sigv4_test
+package rolesanywherev4_test
 
 import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 )
-
 
 // Dummy certificate for test use
 func Cert() (*x509.Certificate, error) {

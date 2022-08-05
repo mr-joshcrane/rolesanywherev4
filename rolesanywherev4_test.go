@@ -1,16 +1,16 @@
-package sigv4_test
+package rolesanywherev4_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/mr-joshcrane/sigv4"
+	"github.com/mr-joshcrane/rolesanywherev4"
 )
 
 func TestSignRequest(t *testing.T) {
 	t.Parallel()
-	sigv4.Now = func() time.Time {
+	rolesanywherev4.Now = func() time.Time {
 		return time.Date(2000, 1, 1, 1, 1, 1, 1, time.UTC)
 	}
 	profileArn := "arn:aws:rolesanywhere:ap-southeast-2:123456789012:profile/9419ce03-14c5-41e5-b0bc-62e717c53092"
@@ -26,7 +26,7 @@ func TestSignRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := sigv4.SignRequest(region, profileArn, roleArn, trustAnchorArn, signingCert, signingKey)
+	req, err := rolesanywherev4.SignRequest(region, profileArn, roleArn, trustAnchorArn, signingCert, signingKey)
 	if err != nil {
 		t.Fatal(err)
 	}

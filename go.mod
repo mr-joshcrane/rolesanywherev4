@@ -1,4 +1,4 @@
-module github.com/mr-joshcrane/sigv4
+module github.com/mr-joshcrane/rolesanywherev4
 
 go 1.18
 

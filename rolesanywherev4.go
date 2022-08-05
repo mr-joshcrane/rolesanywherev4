@@ -1,4 +1,4 @@
-package sigv4
+package rolesanywherev4
 
 import (
 	"crypto"
@@ -108,7 +108,7 @@ func GetSignature(req http.Request, stringToSign string, signingKey *rsa.Private
 	return hex.EncodeToString(signed), nil
 }
 
-func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string,  err error) {
+func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string, err error) {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
 	if err != nil {
