@@ -3,27 +3,123 @@ package sigv4
 import (
 	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"hash"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
-func HashedCanonicalRequest(cr string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(cr)))
+var Now = time.Now
+
+func SignRequest(region, profileArn, roleArn, trustAnchorArn string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) (*http.Request, error) {
+	t := Now().UTC()
+	req, err := createRequest(t, region, profileArn, roleArn, trustAnchorArn, signingCert)
+	if err != nil {
+		return nil, err
+	}
+	_, crHashed, err := CreateCanonicalRequest(*req)
+	if err != nil {
+		return nil, err
+	}
+
+	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
+	credential := fmt.Sprintf("%s/%s", signingCert.SerialNumber, credScope)
+	stringToSign := CreateStringToSign(t, credScope, crHashed)
+	signature, err := GetSignature(*req, stringToSign, signingKey)
+	if err != nil {
+		return nil, err
+	}
+
+	addAuthHeader(req, "AWS4-X509-RSA-SHA256", credential, signature)
+	return req, nil
 }
 
-func CreateCanonicalRequest(req http.Request) string {
+func createRequest(t time.Time, region, profileArn, roleArn, trustAnchorArn string, signingCert *x509.Certificate) (*http.Request, error) {
+	q := url.Values{}
+	q.Set("profileArn", profileArn)
+	q.Set("roleArn", roleArn)
+	q.Set("trustAnchorArn", trustAnchorArn)
+	url := fmt.Sprintf("https://rolesanywhere.%s.amazonaws.com/sessions?%s", region, q.Encode())
+	req, err := http.NewRequest(http.MethodPost, url, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("X-Amz-Date", t.UTC().Format("20060102T150405Z"))
+	req.Header.Add("host", fmt.Sprintf("rolesanywhere.%s.amazonaws.com", region))
+	req.Header.Add("X-Amz-X509", base64.StdEncoding.EncodeToString(signingCert.Raw))
+	return req, nil
+}
+
+func LoadSigningCert(path string) (*x509.Certificate, error) {
+	signingCertificatePEM, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	b, _ := pem.Decode(signingCertificatePEM)
+	return x509.ParseCertificate(b.Bytes)
+}
+
+func LoadSigningKey(path string) (*rsa.PrivateKey, error) {
+	signingKey, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	p, _ := pem.Decode(signingKey)
+	return x509.ParsePKCS1PrivateKey(p.Bytes)
+}
+
+func LoadCertsKeys(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
+	cert, err := LoadSigningCert(certPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := LoadSigningKey(keyPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cert, key, nil
+}
+
+func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
+	signedHeaders := strings.Join(SignedHeaders(*req), ";")
+	authHeader := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Add("content-type", "application/json")
+}
+
+func GetSignature(req http.Request, stringToSign string, signingKey *rsa.PrivateKey) (string, error) {
+	digest := makeHash(sha256.New(), []byte(stringToSign))
+
+	signed, err := signingKey.Sign(rand.Reader, digest, crypto.SHA256)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(signed), nil
+}
+
+func CreateCanonicalRequest(req http.Request) (canonicalRequest, hashedCanonicalRequest string,  err error) {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
 	if err != nil {
-		panic(err)
+		return "", "", err
 	}
-	return fmt.Sprintf("%s\n/%s\n%s\n%s%s", req.Method, req.RequestURI, req.URL.RawQuery, cHeaders, hash)
+	uri := getURIPath(req.URL)
+	query := query(req)
+	canonicalRequest = fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
+	hashedCanonicalRequest = hex.EncodeToString(makeHash(sha256.New(), []byte(canonicalRequest)))
+
+	return canonicalRequest, hashedCanonicalRequest, nil
 }
 
 func hashedPayload(req http.Request) (string, error) {
@@ -40,10 +136,7 @@ func canonicalHeaders(req http.Request) string {
 	header_keys := SignedHeaders(req)
 	for _, k := range header_keys {
 		v := req.Header.Get(k)
-		_, err := cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
-		if err != nil {
-			panic(err)
-		}
+		cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
 	}
 	cHeaders.WriteString("\n")
 	cHeaders.WriteString(strings.Join(header_keys, ";"))
@@ -60,38 +153,37 @@ func SignedHeaders(req http.Request) []string {
 	return header_keys
 }
 
-func CreateStringToSign(req http.Request, credScope string, hashedCR string) string {
-	requestTimestamp := req.Header.Get("x-amz-date")
-	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", requestTimestamp, credScope, hashedCR)
+func CreateStringToSign(t time.Time, credScope, hash string) string {
+	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", t.Format("20060102T150405Z"), credScope, hash)
 }
 
-func GetSignature(req http.Request, stringToSign string, privateKey string) string {
-	p, _ := pem.Decode([]byte(privateKey))
-	parsedKey, err := x509.ParsePKCS1PrivateKey(p.Bytes)
-	if err != nil {
-		panic(err)
+func getURIPath(u *url.URL) string {
+	var uri string
+	if len(u.Opaque) > 0 {
+		uri = "/" + strings.Join(strings.Split(u.Opaque, "/")[3:], "/")
+	} else {
+		uri = u.EscapedPath()
 	}
-	digest := sha256.Sum256([]byte(stringToSign))
-	signed, err := parsedKey.Sign(rand.Reader, digest[:], crypto.SignerOpts.HashFunc(crypto.SHA256))
-	if err != nil {
-		panic(err)
+	if len(uri) == 0 {
+		uri = "/"
 	}
-	
-	return fmt.Sprintf("%x", signed)
+	return uri
 }
 
-func SignRequest(req *http.Request, auth string) {
-	req.Header.Set("Authorization", auth)
+func query(req http.Request) string {
+	query := req.URL.Query()
+	// Sort Each Query Key's Values
+	for key := range query {
+		sort.Strings(query[key])
+	}
+	var rawQuery strings.Builder
+	rawQuery.WriteString(strings.Replace(query.Encode(), "+", "%20", -1))
+	req.URL.RawQuery = rawQuery.String()
+	return rawQuery.String()
 }
 
-func CreateAuthorization(algorithm string, credential string, signedHeaders string, signature string) string {
-	return fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
-}
-
-type RequestBody struct {
-	DurationSeconds int
-	ProfileArn      string
-	RoleArn         string
-	SessionName     string
-	TrustAnchorArn  string
+func makeHash(hash hash.Hash, b []byte) []byte {
+	hash.Reset()
+	hash.Write(b)
+	return hash.Sum(nil)
 }
