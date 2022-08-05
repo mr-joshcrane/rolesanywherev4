@@ -1,71 +1,41 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
-	"net/url"
-	"strings"
-	"time"
+	"os"
 
 	"github.com/mr-joshcrane/sigv4"
 )
 
 func main() {
-	t := time.Now()
-	Mine(t)
+	profileArn := "arn:aws:rolesanywhere:ap-southeast-2:038021827431:profile/9419ce03-14c5-41e5-b0bc-62e717c53092"
+	roleArn := "arn:aws:iam::038021827431:role/TestRole"
+	trustAnchorArn := "arn:aws:rolesanywhere:ap-southeast-2:038021827431:trust-anchor/8f916267-7377-4d5d-a6f6-0b03f3feed3c"
+	region := "ap-southeast-2"
+	signingCertPath := "./certs/inter.pem"
+	signingKeyPath := "./certs/inter_key.pem"
 
-}
-
-func Mine(t time.Time) string {
-	q := url.Values{}
-	q.Set("profileArn", "arn:aws:rolesanywhere:ap-southeast-2:038021827431:profile/9419ce03-14c5-41e5-b0bc-62e717c53092")
-	q.Set("roleArn", "arn:aws:iam::038021827431:role/TestRole")
-	q.Set("trustAnchorArn", "arn:aws:rolesanywhere:ap-southeast-2:038021827431:trust-anchor/8f916267-7377-4d5d-a6f6-0b03f3feed3c")
-	u := fmt.Sprintf("https://rolesanywhere.ap-southeast-2.amazonaws.com/sessions?%s", q.Encode())
-	t = t.UTC()
-	req, err := http.NewRequest(http.MethodPost, u, http.NoBody)
+	req, err := sigv4.SignedRequest(region, profileArn, roleArn, trustAnchorArn, signingCertPath, signingKeyPath)
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-
-	req.Header.Add("X-Amz-Date", t.Format("20060102T150405Z"))
-	req.Header.Add("host", "rolesanywhere.ap-southeast-2.amazonaws.com")
-
-	certPEM, err := ioutil.ReadFile("./certs/inter.pem")
-	if err != nil {
-		panic(err)
-	}
-	cert, _ := pem.Decode(certPEM)
-
-	req.Header.Add("X-Amz-X509", base64.StdEncoding.EncodeToString(cert.Bytes))
-
-	keyPEM, err := ioutil.ReadFile("./certs/inter_key.pem")
-	if err != nil {
-		panic(err)
-	}
-	signedHeaders := strings.Join(sigv4.SignedHeaders(*req), ";")
-	cr := sigv4.CreateCanonicalRequest(*req)
-
-	certSerial := "2"
-
-	credScope := t.Format("20060102") + "/ap-southeast-2/rolesanywhere/aws4_request"
-	hash := sigv4.HashedCanonicalRequest(cr)
-	stringToSign := sigv4.CreateStringToSign(*req, credScope, hash)
-
-	credential := fmt.Sprintf("%s/%s", certSerial, credScope)
-	signature := sigv4.GetSignature(*req, stringToSign, keyPEM)
-	auth := sigv4.CreateAuthorization("AWS4-X509-RSA-SHA256", credential, signedHeaders, signature)
-	req.Header.Set("Authorization", auth)
-
 	client := &http.Client{}
-	req.Header.Add("content-type", "application/json")
 	resp, err := client.Do(req)
-	fmt.Println(resp, err)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	bdy, _ := io.ReadAll(resp.Body)
 	fmt.Println(string(bdy))
-	return auth
+
 }
+
+// Take profileArn, roleArn, trustAnchorArn as url.Values
+// Create a post request
+// read in cert
+// read in key
+// Attach the headers
+// authorize the request
