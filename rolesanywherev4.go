@@ -113,7 +113,7 @@ func createCanonicalRequest(c *config, req http.Request) error {
 		return err
 	}
 	uri := getURIPath(req.URL)
-	query := sortEncodeQuery(req)
+	query := sortEncodeQueryString(req)
 	c.canonicalRequest = fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
 	c.canonicalRequestHashed = hex.EncodeToString(makeHash(sha256.New(), []byte(c.canonicalRequest)))
 	return nil
@@ -164,7 +164,7 @@ func getURIPath(u *url.URL) string {
 	return uri
 }
 
-func sortEncodeQuery(req http.Request) string {
+func sortEncodeQueryString(req http.Request) string {
 	query := req.URL.Query()
 	for key := range query {
 		sort.Strings(query[key])
