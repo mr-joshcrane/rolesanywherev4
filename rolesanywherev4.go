@@ -19,12 +19,13 @@ import (
 )
 
 type config struct {
-	profileArn     string
-	roleArn        string
-	trustAnchorArn string
-	region         string
-	signingCert    *x509.Certificate
-	signingKey     *rsa.PrivateKey
+	profileArn       string
+	roleArn          string
+	trustAnchorArn   string
+	region           string
+	signingCert      *x509.Certificate
+	signingKey       *rsa.PrivateKey
+	signingAlgorithm string
 
 	// These fields are derived during signing
 	canonicalRequest       string
@@ -35,14 +36,17 @@ type config struct {
 	signature              string
 }
 
+type option func(*config) *config
+
 func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) *config {
 	return &config{
-		profileArn:     profileArn,
-		roleArn:        roleArn,
-		trustAnchorArn: trustAnchorArn,
-		region:         "ap-southeast-2",
-		signingCert:    signingCert,
-		signingKey:     signingKey,
+		profileArn:       profileArn,
+		roleArn:          roleArn,
+		trustAnchorArn:   trustAnchorArn,
+		region:           "ap-southeast-2",
+		signingCert:      signingCert,
+		signingKey:       signingKey,
+		signingAlgorithm: "AWS4-X509-RSA-SHA256",
 	}
 }
 
@@ -67,7 +71,7 @@ func SignRequest(c *config) (*http.Request, error) {
 		return nil, err
 	}
 
-	addAuthHeader(req, "AWS4-X509-RSA-SHA256", c.credential, c.signature)
+	addAuthHeader(req, c.signingAlgorithm, c.credential, c.signature)
 	req.Header.Add("content-type", "application/json")
 	return req, nil
 }
@@ -148,7 +152,7 @@ func signedHeaders(req http.Request) []string {
 }
 
 func createStringToSign(c *config, t time.Time) string {
-	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", t.Format("20060102T150405Z"), c.credScope, c.canonicalRequestHashed)
+	return fmt.Sprintf("%s\n%s\n%s\n%s", c.signingAlgorithm, t.Format("20060102T150405Z"), c.credScope, c.canonicalRequestHashed)
 }
 
 func getURIPath(u *url.URL) string {
@@ -169,7 +173,7 @@ func sortEncodeQueryString(req http.Request) string {
 	for key := range query {
 		sort.Strings(query[key])
 	}
-	return strings.ReplaceAll(query.Encode(), "+", "%20") 
+	return strings.ReplaceAll(query.Encode(), "+", "%20")
 
 }
 
