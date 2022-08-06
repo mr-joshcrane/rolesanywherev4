@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-type Config struct {
+type config struct {
 	profileArn     string
 	roleArn        string
 	trustAnchorArn string
@@ -35,8 +35,8 @@ type Config struct {
 	signature              string
 }
 
-func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) *Config {
-	return &Config{
+func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) *config {
+	return &config{
 		profileArn:     profileArn,
 		roleArn:        roleArn,
 		trustAnchorArn: trustAnchorArn,
@@ -48,7 +48,7 @@ func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, 
 
 var Now = time.Now
 
-func SignRequest(c *Config) (*http.Request, error) {
+func SignRequest(c *config) (*http.Request, error) {
 	t := Now().UTC()
 	req, err := createRequest(c, t)
 	if err != nil {
@@ -71,7 +71,7 @@ func SignRequest(c *Config) (*http.Request, error) {
 	return req, nil
 }
 
-func createRequest(c *Config, t time.Time) (*http.Request, error) {
+func createRequest(c *config, t time.Time) (*http.Request, error) {
 	q := url.Values{}
 	q.Set("profileArn", c.profileArn)
 	q.Set("roleArn", c.roleArn)
@@ -95,7 +95,7 @@ func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
 	req.Header.Add("content-type", "application/json")
 }
 
-func getSignature(c *Config, req http.Request) error {
+func getSignature(c *config, req http.Request) error {
 	digest := makeHash(sha256.New(), []byte(c.stringToSign))
 
 	signed, err := c.signingKey.Sign(rand.Reader, digest, crypto.SHA256)
@@ -106,7 +106,7 @@ func getSignature(c *Config, req http.Request) error {
 	return nil
 }
 
-func createCanonicalRequest(c *Config, req http.Request) error {
+func createCanonicalRequest(c *config, req http.Request) error {
 	cHeaders := canonicalHeaders(req)
 	hash, err := hashedPayload(req)
 	if err != nil {
@@ -150,7 +150,7 @@ func signedHeaders(req http.Request) []string {
 	return header_keys
 }
 
-func createStringToSign(c *Config, t time.Time) string {
+func createStringToSign(c *config, t time.Time) string {
 	return fmt.Sprintf("AWS4-X509-RSA-SHA256\n%s\n%s\n%s", t.Format("20060102T150405Z"), c.credScope, c.canonicalRequestHashed)
 }
 
