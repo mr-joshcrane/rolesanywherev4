@@ -68,6 +68,7 @@ func SignRequest(c *config) (*http.Request, error) {
 	}
 
 	addAuthHeader(req, "AWS4-X509-RSA-SHA256", c.credential, c.signature)
+	req.Header.Add("content-type", "application/json")
 	return req, nil
 }
 
@@ -92,7 +93,6 @@ func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
 	signedHeaders := strings.Join(signedHeaders(*req), ";")
 	authHeader := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
 	req.Header.Set("Authorization", authHeader)
-	req.Header.Add("content-type", "application/json")
 }
 
 func getSignature(c *config, req http.Request) error {
