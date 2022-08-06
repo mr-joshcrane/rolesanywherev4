@@ -26,7 +26,16 @@ func TestSignRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := rolesanywherev4.SignRequest(region, profileArn, roleArn, trustAnchorArn, signingCert, signingKey)
+	config := rolesanywherev4.NewRolesAnywhereConfig(
+		profileArn,
+		roleArn,
+		trustAnchorArn,
+		region,
+		signingCert,
+		signingKey,
+	)
+
+	req, err := rolesanywherev4.SignRequest(config)
 	if err != nil {
 		t.Fatal(err)
 	}
