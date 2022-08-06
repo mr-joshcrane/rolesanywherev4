@@ -36,8 +36,6 @@ type config struct {
 	signature              string
 }
 
-type option func(*config) *config
-
 func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) *config {
 	return &config{
 		profileArn:       profileArn,
