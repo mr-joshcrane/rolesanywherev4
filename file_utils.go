@@ -24,15 +24,3 @@ func LoadSigningKey(path string) (*rsa.PrivateKey, error) {
 	p, _ := pem.Decode(signingKey)
 	return x509.ParsePKCS1PrivateKey(p.Bytes)
 }
-
-func LoadCertsKeys(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	cert, err := LoadSigningCert(certPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	key, err := LoadSigningKey(keyPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	return cert, key, nil
-}
