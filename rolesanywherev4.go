@@ -128,17 +128,14 @@ func hashedPayload(req http.Request) (string, error) {
 }
 
 func canonicalHeaders(req http.Request) string {
-	cHeaders := strings.Builder{}
-	req.Header.Set("host", req.Host)
+	var cHeaders string
 	header_keys := signedHeaders(req)
 	for _, k := range header_keys {
 		v := req.Header.Get(k)
-		cHeaders.WriteString(fmt.Sprintf("%s:%s\n", k, v))
+		cHeaders += fmt.Sprintf("%s:%s\n", k, v)
 	}
-	cHeaders.WriteString("\n")
-	cHeaders.WriteString(strings.Join(header_keys, ";"))
-	cHeaders.WriteString("\n")
-	return cHeaders.String()
+	signed_headers := strings.Join(header_keys, ";")
+	return fmt.Sprintf("%s\n%s\n", cHeaders, signed_headers)
 }
 
 func signedHeaders(req http.Request) []string {
