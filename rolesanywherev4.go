@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -33,7 +32,7 @@ func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert 
 		return "", "", "", err
 	}
 	defer resp.Body.Close()
-	var r struct{
+	var r struct {
 		CredentialSet struct {
 			Credentials struct {
 				AccessKeyId     string
