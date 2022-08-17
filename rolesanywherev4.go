@@ -8,117 +8,95 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
 )
 
-type config struct {
-	profileArn       string
-	roleArn          string
-	trustAnchorArn   string
-	region           string
-	signingCert      *x509.Certificate
-	signingKey       *rsa.PrivateKey
-	signingAlgorithm string
-
-	// These fields are derived during signing
-	canonicalRequest       string
-	canonicalRequestHashed string
-	credScope              string
-	credential             string
-	stringToSign           string
-	signature              string
-}
-
-func NewRolesAnywhereConfig(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) *config {
-	return &config{
-		profileArn:       profileArn,
-		roleArn:          roleArn,
-		trustAnchorArn:   trustAnchorArn,
-		region:           "ap-southeast-2",
-		signingCert:      signingCert,
-		signingKey:       signingKey,
-		signingAlgorithm: "AWS4-X509-RSA-SHA256",
-	}
-}
-
 var Now = time.Now
 
-func SignRequest(c *config) (*http.Request, error) {
-	t := Now().UTC()
-	req, err := createRequest(c, t)
+func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) (accessKeyId, secretAccessKey, sessionToken string, err error) {
+	req, err := NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region, signingCert, signingKey)
 	if err != nil {
-		return nil, err
+		return "", "", "", err
 	}
-	err = createCanonicalRequest(c, *req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return "", "", "", err
 	}
-
-	c.credScope = fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), c.region)
-	c.credential = fmt.Sprintf("%s/%s", c.signingCert.SerialNumber, c.credScope)
-	c.stringToSign = createStringToSign(c, t)
-	err = getSignature(c, *req)
+	defer resp.Body.Close()
+	var r struct{
+		CredentialSet struct {
+			Credentials struct {
+				AccessKeyId     string
+				SecretAccessKey string
+				SessionToken    string
+			}
+		}
+	}
+	io.Copy(os.Stdout, resp.Body)
+	err = json.NewDecoder(resp.Body).Decode(&r)
 	if err != nil {
-		return nil, err
+		return "", "", "", err
 	}
-
-	addAuthHeader(req, c.signingAlgorithm, c.credential, c.signature)
-	req.Header.Add("content-type", "application/json")
-	return req, nil
+	return r.CredentialSet.Credentials.AccessKeyId, r.CredentialSet.Credentials.SecretAccessKey, r.CredentialSet.Credentials.SessionToken, nil
 }
 
-func createRequest(c *config, t time.Time) (*http.Request, error) {
+func NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) (*http.Request, error) {
+	const signingAlgorithm = "AWS4-X509-RSA-SHA256"
+	t := Now().UTC()
 	q := url.Values{}
-	q.Set("profileArn", c.profileArn)
-	q.Set("roleArn", c.roleArn)
-	q.Set("trustAnchorArn", c.trustAnchorArn)
-	url := fmt.Sprintf("https://rolesanywhere.%s.amazonaws.com/sessions?%s", c.region, q.Encode())
+	q.Set("profileArn", profileArn)
+	q.Set("roleArn", roleArn)
+	q.Set("trustAnchorArn", trustAnchorArn)
+	url := fmt.Sprintf("https://rolesanywhere.%s.amazonaws.com/sessions?%s", region, q.Encode())
 	req, err := http.NewRequest(http.MethodPost, url, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Add("X-Amz-Date", t.UTC().Format("20060102T150405Z"))
-	req.Header.Add("host", fmt.Sprintf("rolesanywhere.%s.amazonaws.com", c.region))
-	req.Header.Add("X-Amz-X509", base64.StdEncoding.EncodeToString(c.signingCert.Raw))
-	return req, nil
-}
+	req.Header.Add("host", fmt.Sprintf("rolesanywhere.%s.amazonaws.com", region))
+	req.Header.Add("X-Amz-X509", base64.StdEncoding.EncodeToString(signingCert.Raw))
 
-func addAuthHeader(req *http.Request, algorithm, credential, signature string) {
-	signedHeaders := strings.Join(signedHeaders(*req), ";")
-	authHeader := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", algorithm, credential, signedHeaders, signature)
-	req.Header.Set("Authorization", authHeader)
-}
-
-func getSignature(c *config, req http.Request) error {
-	digest := makeHash(sha256.New(), []byte(c.stringToSign))
-
-	signed, err := c.signingKey.Sign(rand.Reader, digest, crypto.SHA256)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.signature = hex.EncodeToString(signed)
-	return nil
-}
 
-func createCanonicalRequest(c *config, req http.Request) error {
-	cHeaders := canonicalHeaders(req)
-	hash, err := hashedPayload(req)
+	cHeaders := canonicalHeaders(*req)
+	hash, err := hashedPayload(*req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	uri := getURIPath(req.URL)
-	query := sortEncodeQueryString(req)
-	c.canonicalRequest = fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
-	c.canonicalRequestHashed = hex.EncodeToString(makeHash(sha256.New(), []byte(c.canonicalRequest)))
-	return nil
+	query := sortEncodeQueryString(*req)
+	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
+	canonicalRequestHashed := hex.EncodeToString(makeHash(sha256.New(), []byte(canonicalRequest)))
+	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
+	credential := fmt.Sprintf("%s/%s", signingCert.SerialNumber, credScope)
+	stringToSign := fmt.Sprintf("%s\n%s\n%s\n%s", signingAlgorithm, t.Format("20060102T150405Z"), credScope, canonicalRequestHashed)
+	digest := sha256.Sum256([]byte(stringToSign))
+	signed, err := signingKey.Sign(rand.Reader, digest[:], crypto.SHA256)
+	if err != nil {
+		return nil, err
+	}
+	signature := hex.EncodeToString(signed)
+	if err != nil {
+		return nil, err
+	}
+	signedHeaders := strings.Join(signedHeaders(*req), ";")
+	authHeader := fmt.Sprintf("%s Credential=%s, SignedHeaders=%s, Signature=%s", signingAlgorithm, credential, signedHeaders, signature)
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Add("content-type", "application/json")
+	return req, nil
 }
 
 func hashedPayload(req http.Request) (string, error) {
@@ -147,10 +125,6 @@ func signedHeaders(req http.Request) []string {
 	}
 	sort.Strings(header_keys)
 	return header_keys
-}
-
-func createStringToSign(c *config, t time.Time) string {
-	return fmt.Sprintf("%s\n%s\n%s\n%s", c.signingAlgorithm, t.Format("20060102T150405Z"), c.credScope, c.canonicalRequestHashed)
 }
 
 func getURIPath(u *url.URL) string {

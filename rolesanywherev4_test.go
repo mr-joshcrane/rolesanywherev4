@@ -9,7 +9,6 @@ import (
 )
 
 func TestSignRequest(t *testing.T) {
-	t.Parallel()
 	rolesanywherev4.Now = func() time.Time {
 		return time.Date(2000, 1, 1, 1, 1, 1, 1, time.UTC)
 	}
@@ -26,7 +25,7 @@ func TestSignRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := rolesanywherev4.NewRolesAnywhereConfig(
+	req, err := rolesanywherev4.NewRolesAnywhereRequest(
 		profileArn,
 		roleArn,
 		trustAnchorArn,
@@ -35,7 +34,6 @@ func TestSignRequest(t *testing.T) {
 		signingKey,
 	)
 
-	req, err := rolesanywherev4.SignRequest(config)
 	if err != nil {
 		t.Fatal(err)
 	}
