@@ -79,7 +79,8 @@ func NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region string,
 	uri := getURIPath(req.URL)
 	query := sortEncodeQueryString(*req)
 	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
-	canonicalRequestHashed := hex.EncodeToString(makeHash(sha256.New(), []byte(canonicalRequest)))
+	h := sha256.Sum256([]byte(canonicalRequest))
+	canonicalRequestHashed := hex.EncodeToString(h[:])
 	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
 	credential := fmt.Sprintf("%s/%s", signingCert.SerialNumber, credScope)
 	stringToSign := fmt.Sprintf("%s\n%s\n%s\n%s", signingAlgorithm, t.Format("20060102T150405Z"), credScope, canonicalRequestHashed)
@@ -147,10 +148,4 @@ func sortEncodeQueryString(req http.Request) string {
 	}
 	return strings.ReplaceAll(query.Encode(), "+", "%20")
 
-}
-
-func makeHash(hash hash.Hash, b []byte) []byte {
-	hash.Reset()
-	hash.Write(b)
-	return hash.Sum(nil)
 }
