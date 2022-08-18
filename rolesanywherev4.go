@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -31,6 +32,7 @@ func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert 
 	}
 	defer resp.Body.Close()
 	var r struct {
+		Message       string
 		CredentialSet []struct {
 			Credentials struct {
 				AccessKeyId     string
@@ -39,9 +41,13 @@ func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert 
 			}
 		}
 	}
+
 	err = json.NewDecoder(resp.Body).Decode(&r)
 	if err != nil {
 		return "", "", "", err
+	}
+	if r.Message != "" {
+		return "", "", "", errors.New(r.Message)
 	}
 	return r.CredentialSet[0].Credentials.AccessKeyId, r.CredentialSet[0].Credentials.SecretAccessKey, r.CredentialSet[0].Credentials.SessionToken, nil
 }
