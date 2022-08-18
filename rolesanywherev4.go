@@ -10,11 +10,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -33,7 +31,7 @@ func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert 
 	}
 	defer resp.Body.Close()
 	var r struct {
-		CredentialSet struct {
+		CredentialSet []struct {
 			Credentials struct {
 				AccessKeyId     string
 				SecretAccessKey string
@@ -41,12 +39,11 @@ func AssumeRole(profileArn, roleArn, trustAnchorArn, region string, signingCert 
 			}
 		}
 	}
-	io.Copy(os.Stdout, resp.Body)
 	err = json.NewDecoder(resp.Body).Decode(&r)
 	if err != nil {
 		return "", "", "", err
 	}
-	return r.CredentialSet.Credentials.AccessKeyId, r.CredentialSet.Credentials.SecretAccessKey, r.CredentialSet.Credentials.SessionToken, nil
+	return r.CredentialSet[0].Credentials.AccessKeyId, r.CredentialSet[0].Credentials.SecretAccessKey, r.CredentialSet[0].Credentials.SessionToken, nil
 }
 
 func NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region string, signingCert *x509.Certificate, signingKey *rsa.PrivateKey) (*http.Request, error) {
@@ -69,15 +66,19 @@ func NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region string,
 	if err != nil {
 		return nil, err
 	}
-
 	cHeaders := canonicalHeaders(*req)
-	hash, err := hashedPayload(*req)
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	payloadHash := fmt.Sprintf("%x", sha256.Sum256(body))
+
 	if err != nil {
 		return nil, err
 	}
 	uri := getURIPath(req.URL)
 	query := sortEncodeQueryString(*req)
-	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, hash)
+	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s%s", req.Method, uri, query, cHeaders, payloadHash)
 	h := sha256.Sum256([]byte(canonicalRequest))
 	canonicalRequestHashed := hex.EncodeToString(h[:])
 	credScope := fmt.Sprintf("%s/%s/rolesanywhere/aws4_request", t.Format("20060102"), region)
@@ -97,14 +98,6 @@ func NewRolesAnywhereRequest(profileArn, roleArn, trustAnchorArn, region string,
 	req.Header.Set("Authorization", authHeader)
 	req.Header.Add("content-type", "application/json")
 	return req, nil
-}
-
-func hashedPayload(req http.Request) (string, error) {
-	body, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", sha256.Sum256(body)), nil
 }
 
 func canonicalHeaders(req http.Request) string {
